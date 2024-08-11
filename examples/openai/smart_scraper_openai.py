@@ -12,7 +12,6 @@ load_dotenv()
 # Define the configuration for the graph
 # ************************************************
 
-
 graph_config = {
     "llm": {
         "api_key": os.getenv("OPENAI_API_KEY"),
@@ -27,8 +26,8 @@ graph_config = {
 # ************************************************
 
 smart_scraper_graph = SmartScraperGraph(
-    prompt="List me what does the company do, the name and a contact email.",
-    source="https://scrapegraphai.com/",
+    prompt="Extract the main heading and the first paragraph from the website.",
+    source="https://www.example.com",
     config=graph_config
 )
 
