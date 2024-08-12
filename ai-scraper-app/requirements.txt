@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+scrapegraphai
+python-dotenv
+openai
+slowapi
+python-multipart
