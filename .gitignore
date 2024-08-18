@@ -43,3 +43,5 @@ lib/
 cache/
 run_smart_scraper.py
 .vercel
+venv/
+venv_streamlit/
