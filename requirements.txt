@@ -29,3 +29,4 @@ browserbase>=0.3.0
 langchain-mistralai>=0.1.12
 requests
 nltk
+streamlit>=1.33.0
