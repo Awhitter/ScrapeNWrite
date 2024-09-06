@@ -1,8 +1,12 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
-RUN apt-get update && apt-get upgrade -y && \
-useradd -m -s /bin/bash app
+WORKDIR /app
 
-USER app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install scrapegraphai
+COPY . .
+
+EXPOSE 9876
+
+CMD ["sh", "-c", "streamlit run streamlit_app.py --server.port 9876 --server.address 0.0.0.0 2>&1 | tee streamlit.log"]
