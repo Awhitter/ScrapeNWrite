@@ -27,7 +27,7 @@ except Exception as e:
     logger.error(traceback.format_exc())
     st.error("An error occurred while importing required modules. Please check the logs for more information.")
 
-def main():
+def main(port=8080):
     try:
         # Download NLTK data
         download_nltk_data()
@@ -142,7 +142,8 @@ def main():
                 "Topic": topic,
                 "Timeframe": timeframe,
                 "Emphasis Areas": emphasis_areas,
-                "Max Tokens": max_tokens
+                "Max Tokens": max_tokens,
+                "Port": port
             })
 
         conn.close()
@@ -153,4 +154,5 @@ def main():
         st.error("An unexpected error occurred. Please check the logs for more information.")
 
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 8080))
+    main(port=port)
