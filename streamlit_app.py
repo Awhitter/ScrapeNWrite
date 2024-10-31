@@ -29,11 +29,15 @@ except Exception as e:
 
 def main(port=8080):
     try:
-        # Download NLTK data
-        download_nltk_data()
-
+        st.set_page_config(page_title="Advanced AI Content Assistant", layout="wide")
+        
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Download NLTK data - moved after page config
+        if not download_nltk_data():
+            st.error("Failed to set up required dependencies. Please check the logs for more information.")
+            return
 
         # Initialize database
         conn = sqlite3.connect('content_analysis.db')
@@ -45,8 +49,6 @@ def main(port=8080):
                       audience TEXT,
                       result TEXT)''')
         conn.commit()
-
-        st.set_page_config(page_title="Advanced AI Content Assistant", layout="wide")
 
         st.sidebar.title("Advanced AI Content Assistant")
         st.sidebar.image("https://your-logo-url-here.com", width=200)
@@ -151,7 +153,12 @@ def main(port=8080):
     except Exception as e:
         logger.error(f"An error occurred in the main app: {str(e)}")
         logger.error(traceback.format_exc())
-        st.error("An unexpected error occurred. Please check the logs for more information.")
+        st.error("""
+        An unexpected error occurred. Please try the following:
+        1. Make sure you have Python 3.7+ installed
+        2. Run: pip install nltk requests beautifulsoup4
+        3. Check the logs for more information
+        """)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
