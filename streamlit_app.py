@@ -5,9 +5,10 @@ import sys
 import site
 import logging
 import traceback
-import markdown
 import re
 from datetime import datetime
+from io import BytesIO
+import plotly.graph_objects as go
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,42 +31,141 @@ except Exception as e:
     logger.error(traceback.format_exc())
     st.error("An error occurred while importing required modules. Please check the logs for more information.")
 
+def display_spider_graph(spider_results):
+    """Create an interactive spider graph visualization using Plotly"""
+    try:
+        # Extract metrics from the spider graph results
+        metrics = {
+            "Key Points": len(re.findall(r'- ', spider_results)),  # Count bullet points
+            "Tone": 1 if "Positive" in spider_results else (-1 if "Negative" in spider_results else 0),
+            "Sentence Length": float(re.search(r'Average sentence length: (\d+\.?\d*)', spider_results).group(1)),
+            "Paragraph Length": float(re.search(r'Average paragraph length: (\d+\.?\d*)', spider_results).group(1)),
+            "Paragraphs": float(re.search(r'Number of paragraphs: (\d+)', spider_results).group(1))
+        }
+        
+        # Create the spider graph
+        categories = list(metrics.keys())
+        values = list(metrics.values())
+        
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values,
+            theta=categories,
+            fill='toself',
+            line=dict(color='#5C4B9B')
+        ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[min(values), max(values)]
+                )
+            ),
+            showlegend=False,
+            height=400,  # Fixed height
+            margin=dict(l=40, r=40, t=20, b=20),  # Reduced margins
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        # Display the graph
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Display the text analysis below the graph
+        st.markdown("### Detailed Analysis")
+        st.text(spider_results)
+        
+    except Exception as e:
+        logger.error(f"Error in spider graph visualization: {str(e)}")
+        st.warning("Unable to display visualization. Showing raw analysis:")
+        st.text(spider_results)
+
 def export_content(content, format_type):
     """Export content in various formats"""
-    if format_type == "markdown":
-        return content
-    elif format_type == "txt":
-        # Strip markdown formatting
-        return re.sub(r'[#*`]', '', content)
-    elif format_type == "html":
-        return markdown.markdown(content)
-    return content
+    try:
+        if format_type in ["txt", "markdown"]:
+            return content.encode('utf-8')
+        elif format_type == "pdf":
+            try:
+                import pdfkit
+                options = {
+                    'page-size': 'A4',
+                    'margin-top': '20mm',
+                    'margin-right': '20mm',
+                    'margin-bottom': '20mm',
+                    'margin-left': '20mm',
+                    'encoding': "UTF-8",
+                }
+                return pdfkit.from_string(content, False, options=options)
+            except Exception as e:
+                st.error(f"PDF export failed: {str(e)}. Make sure wkhtmltopdf is installed.")
+                return None
+        elif format_type == "mp3":
+            try:
+                from gtts import gTTS
+                audio = BytesIO()
+                tts = gTTS(text=re.sub(r'[#*`]', '', content), lang='en')
+                tts.write_to_fp(audio)
+                audio.seek(0)
+                return audio.read()
+            except Exception as e:
+                st.error(f"MP3 export failed: {str(e)}")
+                return None
+        elif format_type == "docx":
+            try:
+                from docx import Document
+                doc = Document()
+                doc.add_paragraph(content)
+                docx = BytesIO()
+                doc.save(docx)
+                docx.seek(0)
+                return docx.read()
+            except Exception as e:
+                st.error(f"DOCX export failed: {str(e)}")
+                return None
+    except Exception as e:
+        logger.error(f"Export error for format {format_type}: {str(e)}")
+        st.error(f"Export failed: {str(e)}")
+        return None
+    
+    return None
 
 def display_export_options(result):
-    """Display export options for the generated content"""
-    st.markdown("---")
+    """Display simplified export options"""
     st.markdown("### 📤 Export Options")
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([2, 1])
     
     with col1:
         export_format = st.selectbox(
-            "Choose format",
-            ["markdown", "txt", "html"]
+            "Format",
+            ["markdown", "txt", "pdf", "docx", "mp3"]
         )
     
     with col2:
-        if st.button("📄 Export"):
-            exported_content = export_content(result, export_format)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"content_export_{timestamp}.{export_format}"
-            
-            st.download_button(
-                label="💾 Download File",
-                data=exported_content,
-                file_name=filename,
-                mime=f"text/{export_format}"
-            )
+        st.markdown("#")  # Spacing
+        if st.button("💾 Export", type="primary", use_container_width=True):
+            with st.spinner(f"Preparing {export_format.upper()}..."):
+                exported_content = export_content(result, export_format)
+                if exported_content is not None:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"content_export_{timestamp}.{export_format}"
+                    
+                    mime_types = {
+                        "txt": "text/plain",
+                        "pdf": "application/pdf",
+                        "mp3": "audio/mpeg",
+                        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "markdown": "text/markdown"
+                    }
+                    
+                    st.download_button(
+                        "📥 Download",
+                        data=exported_content,
+                        file_name=filename,
+                        mime=mime_types.get(export_format, "text/plain"),
+                        use_container_width=True
+                    )
+                    st.success(f"✅ {export_format.upper()} export ready!")
 
 def main(port=8080):
     try:
@@ -78,22 +178,15 @@ def main(port=8080):
         # Custom CSS for better styling
         st.markdown("""
             <style>
-            .sidebar .sidebar-content {
-                background-color: #f8f9fa;
+            .stTabs [data-baseweb="tab"] {
+                padding-top: 1rem;
+                padding-bottom: 1rem;
             }
-            .stButton>button {
+            .stTabs [data-baseweb="tab-panel"] {
+                padding: 1rem 0;
+            }
+            .stButton > button {
                 width: 100%;
-                background-color: #5C4B9B;
-                color: white;
-            }
-            .stButton>button:hover {
-                background-color: #4a3b89;
-            }
-            .export-container {
-                background-color: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             </style>
         """, unsafe_allow_html=True)
@@ -101,7 +194,7 @@ def main(port=8080):
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Download NLTK data - moved after page config
+        # Download NLTK data
         if not download_nltk_data():
             st.error("Failed to set up required dependencies. Please check the logs for more information.")
             return
@@ -149,12 +242,12 @@ def main(port=8080):
             "Get for LLM (non-human, massive info density)"
         ])
 
-        # Model selection (fixed to gpt-4o-2024-08-06)
+        # Model selection
         model = "gpt-4o-2024-08-06"
 
         st.title("Advanced AI Content Assistant")
 
-        # Enhanced input section
+        # Input section
         input_type = st.radio(
             "Choose input type",
             ["Text/URLs", "File Upload"],
@@ -176,51 +269,46 @@ def main(port=8080):
                 text_content = ""
                 urls = ""
 
-        max_tokens = 16000  # Increased to 16000
+        max_tokens = 16000
 
         if st.button("Generate Content"):
-            if not client.api_key:
-                st.error("Please set your OpenAI API key as an environment variable.")
-            elif not audience:
-                st.error("Please specify the target audience.")
-            elif not (urls or text_content):
+            if not urls and not text_content:
                 st.error("Please enter at least one URL or some text content.")
             else:
-                with st.spinner("Analyzing content..."):
-                    try:
-                        spider_graph_results = spider_graph_analysis(urls, text_content)
-                        
-                        st.subheader("Spider Graph Analysis")
-                        st.text(spider_graph_results)
-                        
-                        prompt = generate_prompt(task, urls, text_content, audience, topic, timeframe, emphasis_areas, spider_graph_results)
-                        
-                        response = client.chat.completions.create(
-                            model=model,
-                            messages=[
-                                {"role": "system", "content": "You are a highly skilled AI content analyst and creator. Your task is to provide detailed, specific, and comprehensive content based on the given inputs. Each output should build upon previous analyses and results, creating a coherent and in-depth final product."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            max_tokens=max_tokens
-                        )
-                        
-                        result = response.choices[0].message.content.strip()
-                        
-                        # Save result to database
-                        c.execute("INSERT INTO analysis_results (task, urls, audience, result) VALUES (?, ?, ?, ?)",
-                                  (task, urls, audience, result))
-                        conn.commit()
-                        
-                        st.subheader("Generated Content")
-                        st.markdown(result)
-                        
-                        # Display export options
-                        display_export_options(result)
-                        
-                    except Exception as e:
-                        logger.error(f"An error occurred during content generation: {str(e)}")
-                        logger.error(traceback.format_exc())
-                        st.error(f"An error occurred during content generation. Please check the logs for more information.")
+                try:
+                    tab1, tab2 = st.tabs(["Analysis", "Generated Content"])
+                    
+                    with tab1:
+                        with st.spinner("Analyzing content..."):
+                            spider_results = spider_graph_analysis(urls, text_content)
+                            display_spider_graph(spider_results)
+                    
+                    with tab2:
+                        with st.spinner("Generating content..."):
+                            prompt = generate_prompt(task, urls, text_content, audience, topic, timeframe, emphasis_areas, spider_results)
+                            response = client.chat.completions.create(
+                                model=model,
+                                messages=[
+                                    {"role": "system", "content": "You are a highly skilled AI content analyst and creator..."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                max_tokens=max_tokens
+                            )
+                            
+                            result = response.choices[0].message.content.strip()
+                            
+                            # Save to database
+                            c.execute("INSERT INTO analysis_results (task, urls, audience, result) VALUES (?, ?, ?, ?)",
+                                      (task, urls, audience, result))
+                            conn.commit()
+                            
+                            st.markdown(result)
+                            display_export_options(result)
+                            
+                except Exception as e:
+                    logger.error(f"An error occurred: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    st.error("An error occurred. Please check the logs for more information.")
 
         st.sidebar.markdown("---")
         st.sidebar.markdown("© 2023 HLT. All rights reserved.")
